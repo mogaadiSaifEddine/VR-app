@@ -4,6 +4,48 @@
 
 A **creator** goes to a real place, places AR content there and publishes it as an experience. A **player** can only see and interact with that content when they physically stand at the same spot. Nothing is generated automatically and there is no global game map: every experience is made by a person, for a specific place.
 
+## 1.1 First step: proof of concept (POC)
+
+The first build is a POC that answers one question: **can a creator put AR content at a real spot, and can a player on a different phone see it in the same place later?**
+
+**No authentication in the POC.** No sign-up, login or user accounts.
+
+- Creator and Player are a **mode switch** on the home screen, not user roles.
+- The backend allows anonymous reads and writes, which is acceptable for a POC only.
+- Each install gets a random **device ID**, stored locally. It is saved as `creator_device_id` on experiences so a device can edit or delete its own content. It is not a security measure.
+- Real authentication and roles (Section 5 `User`) come back in Phase 1.
+
+**In scope**
+
+| Area | POC scope |
+|---|---|
+| Platform | Unity + AR Foundation. Android first (most ARCore devices), iOS if time allows. |
+| Anchoring | Outdoor only, using the ARCore Geospatial API. No scanning step for creators. |
+| Creator | Create an experience (title only), place **one spot** with up to 3 items: a basic 3D model, a text label and an image. Publish. |
+| Player | List of experiences sorted by distance. Unlock within 30 m (GPS). Localize, then see the content. |
+| Backend | Supabase (Postgres + Storage) with anonymous access, or a single JSON REST endpoint. |
+| Content | A small built-in model library plus image upload. No custom 3D uploads. |
+
+**Out of scope for the POC:** authentication, multi-spot trails, audio and video, quizzes, progress and badges, web dashboard, anti-cheat, moderation, offline mode, indoor anchors.
+
+**POC data model**
+
+```
+Experience(id, title, creator_device_id, created_at)
+Spot(id, experience_id, lat, lng, altitude, heading, unlock_radius_m)
+ContentItem(id, spot_id, type: model|text|image, asset_ref,
+            local_pose{position, rotation, scale})
+```
+
+**Success criteria**
+
+1. Content placed by device A appears on device B within **about 1 m** of where it was placed.
+2. Localization takes **less than 30 seconds** in good conditions.
+3. It works at **at least 3 test locations**, on different days.
+4. A non-technical tester can complete the creator flow and the player flow without help.
+
+**Estimated time:** 3–4 weeks. This replaces Phase 0 and the first half of Phase 1.
+
 ## 2. The key technical decision: anchoring content to a place
 
 GPS alone is accurate to roughly 5–15 m. That is fine for checking "you're nearby" but too loose to put a 3D object on a particular statue or door. So you need two layers:
@@ -70,8 +112,8 @@ PlayerProgress(user_id, experience_id, spot_id, unlocked_at, completed_at)
 
 | Phase | Scope | Rough length |
 |---|---|---|
-| **0. Tech spike** | Test Geospatial API and Cloud Anchors at 2–3 real locations, indoor and outdoor. Measure accuracy and how long localization takes. | 2 weeks |
-| **1. MVP** | Login, creator places one spot with basic content (3D model, text, image), publish, player map, geofence unlock, VPS display | 6–8 weeks |
+| **0. POC (see 1.1)** | No auth. Single-spot creator and player flow, outdoor Geospatial anchoring. Also serves as the tech spike. | 3–4 weeks |
+| **1. MVP** | Add authentication and roles (creator/player accounts), creator places one spot with basic content (3D model, text, image), publish, player map, geofence unlock, VPS display | 6–8 weeks |
 | **2. Experiences** | Multi-spot trails, audio and video, quizzes, progress and badges, invite codes | 4–6 weeks |
 | **3. Creator tools** | Web dashboard, asset library, translations, analytics (visits, completions) | 4–6 weeks |
 | **4. Scale and polish** | Anti-cheat, offline caching, moderation and reporting, push notifications ("you're near an experience"), store launch | 4 weeks |
