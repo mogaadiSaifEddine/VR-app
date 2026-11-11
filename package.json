@@ -1,0 +1,24 @@
+{
+  "name": "place-ar",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "POC: location-based web AR where creators anchor content to real places and players must be on site to see it.",
+  "scripts": {
+    "dev": "vite --host",
+    "dev:https": "vite --host --mode https",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "mind-ar": "^1.2.5",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.187.0",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  }
+}

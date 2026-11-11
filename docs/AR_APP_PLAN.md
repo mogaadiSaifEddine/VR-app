@@ -52,6 +52,8 @@ Each spot uses two layers:
 
 ## 4. POC scope
 
+> **Status:** phase 1 is built (see `README.md`). For the first iteration there is **no backend**: all data is stored in the browser's `localStorage`, and experiences move between devices with JSON export/import. Supabase replaces this in the next iteration.
+
 **No authentication.**
 
 - No sign-up, login or accounts. Anyone can create and anyone can play.
