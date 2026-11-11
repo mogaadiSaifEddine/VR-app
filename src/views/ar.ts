@@ -30,6 +30,15 @@ export const arView = (root: HTMLElement, [expId, spotId]: string[], mode: 'prev
         <img src="${targetImage}" alt="" />
         <p>Point your camera at this${spot.hint ? `<br><small>${esc(spot.hint)}</small>` : ''}</p>
       </div>
+      <div class="ar-tips" id="tips" hidden>
+        <strong>Can't find it?</strong>
+        <ul>
+          <li>Stand about where the photo was taken, facing the object straight on.</li>
+          <li>Fill most of the screen with the object, then move slowly.</li>
+          <li>Avoid glare and reflections; make sure it's well lit.</li>
+          ${mode === 'preview' ? '<li>Still nothing? Re-take the photo and crop it to just the object.</li>' : ''}
+        </ul>
+      </div>
       <div class="ar-info" id="info" hidden></div>
     </div>`;
   document.body.classList.add('no-scroll');
@@ -37,6 +46,12 @@ export const arView = (root: HTMLElement, [expId, spotId]: string[], mode: 'prev
   const status = $('#status', root);
   const scan = $('#scan', root);
   const info = $('#info', root);
+  const tips = $('#tips', root);
+  let tipsTimer: number | undefined;
+  const scheduleTips = () => {
+    window.clearTimeout(tipsTimer);
+    tipsTimer = window.setTimeout(() => (tips.hidden = false), 8000);
+  };
   const setStatus = (text: string, isError = false) => {
     status.hidden = !text;
     status.textContent = text;
@@ -63,11 +78,14 @@ export const arView = (root: HTMLElement, [expId, spotId]: string[], mode: 'prev
         targetBuffer: buffer,
         onFound: () => {
           scan.hidden = true;
+          tips.hidden = true;
+          window.clearTimeout(tipsTimer);
           if (mode === 'play') markSpotFound(exp.id, spot.id);
         },
         onLost: () => {
           scan.hidden = false;
           info.hidden = true;
+          scheduleTips();
         },
         onTap: (itemId) => {
           const item = itemId ? spot.items.find((i) => i.id === itemId) : undefined;
@@ -83,7 +101,10 @@ export const arView = (root: HTMLElement, [expId, spotId]: string[], mode: 'prev
       await session.start();
       if (cancelled) return;
       setStatus('');
-      scan.hidden = false;
+      if (!session.isTracking) {
+        scan.hidden = false;
+        scheduleTips();
+      }
     } catch (err) {
       setStatus(errorMessage(err), true);
     }
@@ -93,6 +114,7 @@ export const arView = (root: HTMLElement, [expId, spotId]: string[], mode: 'prev
 
   return () => {
     cancelled = true;
+    window.clearTimeout(tipsTimer);
     session?.stop();
     document.body.classList.remove('no-scroll');
   };

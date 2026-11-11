@@ -76,6 +76,11 @@ Each spot uses two layers:
 
 **Out of scope for the POC:** authentication, organisations/teams, moderation, analytics, offline mode, quizzes and badges, VPS, native apps.
 
+### Next up (planned, not built yet)
+
+- **Share link with QR code.** A player scans a QR code or opens a link and the experience loads on their phone automatically, instead of passing a JSON file around. Target photos are too large to fit in a URL, so this needs a place to host the data: a small file host first, then the Supabase backend.
+- **Target photo tips learned from field testing.** Target photos must be **cropped to just the flat object**. A photo that includes the wall, floor or surroundings fails to track when the player frames only the object. The creator flow now includes a crop step.
+
 ## 5. Tech stack
 
 | Part | Choice | Why |

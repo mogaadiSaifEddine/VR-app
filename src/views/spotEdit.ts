@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { addLights, animateItems, applyPose, buildItem, createItem, disposeObject, SHAPES, targetPlane } from '../content';
 import { getPosition, formatDistance } from '../geo';
 import { fileToDataUrl } from '../image';
+import { cropImage } from '../crop';
 import { findSpot, getExperience, saveExperience } from '../store';
 import { compileTarget, targetQuality } from '../target';
 import type { Animation, ContentItem, ModelShape } from '../types';
@@ -63,10 +64,13 @@ export const spotEditView: View = (root, [expId, spotId]) => {
 
       <section class="card">
         <h2>2. Target object</h2>
-        <p class="muted small">Take a straight-on, well-lit photo of a flat object at this spot (painting, sign, poster, plaque) that fills the frame. Objects with lots of detail work best; plain walls, glass and shiny surfaces do not.</p>
+        <p class="muted small">Take a straight-on, well-lit photo of a flat object at this spot (painting, sign, poster, plaque), then crop it to <strong>just the object</strong>. Objects with lots of detail work best; plain walls, glass and shiny surfaces do not.</p>
         <div id="target"></div>
-        <label class="button primary">📷 ${spot.targetImage ? 'Replace photo' : 'Take photo'}
-          <input type="file" id="targetFile" accept="image/*" hidden /></label>
+        <div class="row wrap gap">
+          <label class="button primary">📷 ${spot.targetImage ? 'Replace photo' : 'Take photo'}
+            <input type="file" id="targetFile" accept="image/*" hidden /></label>
+          <button id="recrop" ${spot.targetImage ? '' : 'hidden'}>✂️ Adjust crop</button>
+        </div>
       </section>
 
       <section class="card">
@@ -147,22 +151,20 @@ export const spotEditView: View = (root, [expId, spotId]) => {
       : `<p class="warn small">No photo yet.</p>`;
   };
   renderTarget();
-  $input('#targetFile', root).onchange = async (e) => {
-    const input = e.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file) return;
+  const useTarget = async (src: string) => {
+    const cropped = await cropImage(src, 900, 0.85);
+    if (!cropped) return;
     const prev = { img: spot.targetImage, aspect: spot.targetAspect, f: spot.targetFeatures };
     try {
-      const { dataUrl, width, height } = await fileToDataUrl(file, 900, 0.8);
-      spot.targetImage = dataUrl;
-      spot.targetAspect = height / width;
+      spot.targetImage = cropped.dataUrl;
+      spot.targetAspect = cropped.height / cropped.width;
       spot.targetFeatures = null;
       renderTarget(0);
-      const { features } = await compileTarget(dataUrl, (p) => renderTarget(p));
+      const { features } = await compileTarget(cropped.dataUrl, (p) => renderTarget(p));
       spot.targetFeatures = features;
       saveNow();
       renderTarget();
+      $('#recrop', root).hidden = false;
       editor.setTarget(spot.targetImage, spot.targetAspect);
       if (features < 150) toast('This photo has little detail. Tracking may be unreliable.', 'error');
     } catch (err) {
@@ -170,6 +172,22 @@ export const spotEditView: View = (root, [expId, spotId]) => {
       renderTarget();
       toast(errorMessage(err), 'error');
     }
+  };
+  $input('#targetFile', root).onchange = async (e) => {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    try {
+      // Keep plenty of resolution for cropping; the crop is scaled down after.
+      const { dataUrl } = await fileToDataUrl(file, 2400, 0.92);
+      await useTarget(dataUrl);
+    } catch (err) {
+      toast(errorMessage(err), 'error');
+    }
+  };
+  $('#recrop', root).onclick = () => {
+    if (spot.targetImage) useTarget(spot.targetImage);
   };
 
   // ---- 3D editor -----------------------------------------------------------

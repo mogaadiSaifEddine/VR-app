@@ -14,7 +14,7 @@ This is the **phase 1 proof of concept** described in [`docs/AR_APP_PLAN.md`](do
 |---|---|
 | **Create** → name the experience → **Add spot** | **Explore** → experiences sorted by distance |
 | Save your GPS location, set the unlock radius (or turn the check off indoors) | A spot unlocks inside its radius |
-| Take a photo of the target object; the app rates how trackable it is | **Open camera** and point it at the object |
+| Take a photo of the target object and **crop it to just the object**; the app rates how trackable it is | **Open camera** and point it at the object |
 | Add 3D shapes, text and images; position them in the 3D editor | Content appears on the object; tap items for info |
 | **Preview in AR**, then **Publish** | Found spots are ticked off |
 
@@ -63,6 +63,8 @@ which is only needed for Node and fails to build on many machines.
 | `src/views/` | Screens: home, experience editor, spot editor (3D editor), explore, play, AR |
 
 ## Known limits of this POC
+
+- The target photo must show **only the flat object** (use the crop step). If it includes the surroundings, tracking usually fails.
 
 - `localStorage` holds about 5 MB per site; photos are downscaled to fit. Storage used is shown on the home screen.
 - Target photos are compiled to tracking data on each device when a spot is opened (a few seconds), because the compiled data is too large for `localStorage`.

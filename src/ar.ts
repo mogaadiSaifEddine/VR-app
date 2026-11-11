@@ -26,6 +26,9 @@ export class ARSession {
   private controller: Controller | null = null;
   private postMatrix = new THREE.Matrix4();
   private visible = false;
+  get isTracking(): boolean {
+    return this.visible;
+  }
   private stopped = false;
   private clock = new THREE.Clock();
   private onResize = () => this.resize();
