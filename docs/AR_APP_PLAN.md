@@ -4,131 +4,154 @@
 
 A **creator** goes to a real place, places AR content there and publishes it as an experience. A **player** can only see and interact with that content when they physically stand at the same spot. Nothing is generated automatically and there is no global game map: every experience is made by a person, for a specific place.
 
-## 1.1 First step: proof of concept (POC)
+### Decisions made
 
-The first build is a POC that answers one question: **can a creator put AR content at a real spot, and can a player on a different phone see it in the same place later?**
+| Question | Decision |
+|---|---|
+| Setting | **Both** indoor (museums, venues) and outdoor (cities, trails) |
+| Audience | **B2B**: museums, tourism boards, venues, event organisers |
+| Who can create | **Any user** in the POC, since there is no authentication |
+| Platform | **Web first**: a mobile web app opened from a link or QR code, no app-store install |
 
-**No authentication in the POC.** No sign-up, login or user accounts.
+## 2. What web AR can and can't do (2026)
 
-- Creator and Player are a **mode switch** on the home screen, not user roles.
-- The backend allows anonymous reads and writes, which is acceptable for a POC only.
-- Each install gets a random **device ID**, stored locally. It is saved as `creator_device_id` on experiences so a device can edit or delete its own content. It is not a security measure.
-- Real authentication and roles (Section 5 `User`) come back in Phase 1.
+| Capability | Android (Chrome) | iOS (Safari) |
+|---|---|---|
+| Camera + image tracking (JS/WebAssembly, e.g. MindAR) | Yes | Yes |
+| GPS + compass in the browser | Yes | Yes (compass needs a permission tap) |
+| WebXR `immersive-ar` (world tracking, hit test) | Yes | **No** |
+| Google Geospatial API / Cloud Anchors | **No** (native only) | **No** |
+| Commercial web VPS (e.g. Immersal Web SDK) | Yes, paid | Yes, paid |
+
+**Consequences:**
+
+- Geospatial API and Cloud Anchors, which the native plan relied on, are not available on the web.
+- GPS alone (5–15 m off, indoors worse) can't place content precisely.
+- To work on both iOS and Android, indoors and outdoors, the POC uses **image targets** as the precise anchor.
+
+## 3. Anchoring approach for the web POC
+
+Each spot uses two layers:
+
+1. **Place check (coarse): GPS geofence.** The player must be within the spot's radius to unlock it. The default is 50 m outdoors. Indoors GPS is unreliable, so the creator can set a larger radius (for example 150 m around the building) or turn the check off.
+2. **Precise anchor: an image target.** The creator photographs something flat and fixed at the spot: a painting, a sign, a poster, a plaque or a mural. Content is placed **relative to that image**. When a player points their camera at the same object, the content appears exactly where the creator put it.
+
+**Why this works well for B2B:**
+
+- It works indoors and outdoors, on iOS and Android, with no install.
+- Museums and venues already have natural targets (artworks, signage), or can print a branded marker or QR poster.
+- The physical object is itself proof the player is on site. The GPS check is a second layer.
+
+**Limits accepted for the POC:**
+
+- Content must stay near the target, roughly within a few metres. It can't float freely across a large square.
+- Targets need texture and detail. A plain white wall won't track. The editor shows a quality score for each photo.
+- Someone could cheat using a photo of the target. That's acceptable for a POC, and the GPS check reduces it.
+
+**Later, optional outdoor mode:** GPS + compass-anchored content (in the style of AR.js / LocAR.js) for large, loosely placed objects such as a giant arrow or a floating sign, where 5–15 m accuracy is acceptable.
+
+## 4. POC scope
+
+**No authentication.**
+
+- No sign-up, login or accounts. Anyone can create and anyone can play.
+- The home screen has two buttons: **Create** and **Explore**.
+- Each browser gets a random device ID in local storage. It is saved as `creator_device_id` so the same browser can edit or delete its own experiences. It is not a security measure.
+- Each experience also gets a secret **edit link** (`/edit/<id>?key=<edit_key>`), so a creator can continue editing on another device.
+- The backend allows anonymous reads and writes, limited by row-level rules (only the edit key can modify an experience). This is acceptable for a POC only.
 
 **In scope**
 
 | Area | POC scope |
 |---|---|
-| Platform | Unity + AR Foundation. Android first (most ARCore devices), iOS if time allows. |
-| Anchoring | Outdoor only, using the ARCore Geospatial API. No scanning step for creators. |
-| Creator | Create an experience (title only), place **one spot** with up to 3 items: a basic 3D model, a text label and an image. Publish. |
-| Player | List of experiences sorted by distance. Unlock within 30 m (GPS). Localize, then see the content. |
-| Backend | Supabase (Postgres + Storage) with anonymous access, or a single JSON REST endpoint. |
-| Content | A small built-in model library plus image upload. No custom 3D uploads. |
+| Delivery | Mobile web app over HTTPS, shared by link or QR code |
+| Experiences | Title, description, cover image, one or more spots (multi-spot trails come later) |
+| Spot | GPS position + radius, plus one image target |
+| Content per spot | Up to 5 items: 3D model (built-in library or GLB upload), text label, image, a short audio clip |
+| Creator | Create on site from the phone: take the target photo, then place and adjust content in a live AR preview. Publish. |
+| Player | List or map sorted by distance. Unlock in the geofence. Point the camera at the target to show the content. Tap items for interactions (play audio, show info). |
+| Sharing | Each experience has a public link and a printable QR code for on-site posters |
 
-**Out of scope for the POC:** authentication, multi-spot trails, audio and video, quizzes, progress and badges, web dashboard, anti-cheat, moderation, offline mode, indoor anchors.
+**Out of scope for the POC:** authentication, organisations/teams, moderation, analytics, offline mode, quizzes and badges, VPS, native apps.
 
-**POC data model**
+## 5. Tech stack
 
-```
-Experience(id, title, creator_device_id, created_at)
-Spot(id, experience_id, lat, lng, altitude, heading, unlock_radius_m)
-ContentItem(id, spot_id, type: model|text|image, asset_ref,
-            local_pose{position, rotation, scale})
-```
-
-**Success criteria**
-
-1. Content placed by device A appears on device B within **about 1 m** of where it was placed.
-2. Localization takes **less than 30 seconds** in good conditions.
-3. It works at **at least 3 test locations**, on different days.
-4. A non-technical tester can complete the creator flow and the player flow without help.
-
-**Estimated time:** 3–4 weeks. This replaces Phase 0 and the first half of Phase 1.
-
-## 2. The key technical decision: anchoring content to a place
-
-GPS alone is accurate to roughly 5–15 m. That is fine for checking "you're nearby" but too loose to put a 3D object on a particular statue or door. So you need two layers:
-
-| Layer | Purpose | Technology |
+| Part | Choice | Why |
 |---|---|---|
-| **Coarse (unlock)** | Is the player within about 50 m? Show the experience on the map and unlock it. | GPS geofence |
-| **Fine (placement)** | Put content in exactly the spot where the creator left it, accurate to centimetres. | A visual positioning system (VPS), which locates the phone from what the camera sees |
+| Front end | **Vite + TypeScript**, plain or with a light framework (Preact/React) | Fast, small bundles, simple deploy |
+| 3D | **Three.js** | Standard, works with MindAR, loads GLB |
+| Image tracking | **MindAR** (open source, MIT) | Works on iOS and Android browsers. Can **compile targets in the browser**, so no server build step is needed. |
+| Backend | **Supabase** (Postgres + Storage), anonymous access | Free tier, PostGIS for distance queries, file storage for images, models and compiled `.mind` targets |
+| Hosting | Vercel or Netlify (HTTPS is required for camera access) | Free, deploys on every push |
 
-**Fine-placement options:**
+**Alternatives considered:**
+- *8th Wall:* Niantic retired the hosted platform. Check its current open-source status before considering it.
+- *Zappar / Mattercraft:* a good commercial option if the team wants a paid, supported SDK.
+- *Immersal Web SDK:* web VPS for later, when content must be placed freely in a space without image targets.
 
-- **ARCore Geospatial API (Google).** Works outdoors on iOS and Android, using Street View imagery. Accuracy is under a metre, and the creator doesn't need to scan anything. Best for cities and outdoor trails.
-- **ARCore Cloud Anchors.** The creator scans the spot with their phone and the anchor is saved in the cloud. Works indoors, which matters for museums. Anchors can last up to 365 days.
-- **Immersal or Niantic Spatial VPS.** The creator scans and maps a space. Strong indoors and suited to large venues, but these are paid services.
+## 6. User flows
 
-**Recommendation:** use GPS for the unlock, Geospatial API for outdoor placement and Cloud Anchors for indoor placement. Design the code so the anchor provider can be swapped later.
+### Creator
 
-## 3. Tech stack
+1. Tap **Create** and enter a title and description.
+2. At the place, tap **Add spot**. The browser captures the GPS position and the creator sets the unlock radius (or turns it off for indoors).
+3. Take a photo of the target object. The app checks it has enough detail and compiles it into a `.mind` target in the browser.
+4. Point the camera at the target. The live AR view starts.
+5. Add content (model, text, image, audio). Move, rotate and scale it with on-screen controls. Positions are saved relative to the target.
+6. Repeat for more spots if needed, then **Publish**. The app shows the public link, a QR code and the private edit link.
 
-- **App:** Unity with AR Foundation, giving one codebase for iOS (ARKit) and Android (ARCore). Web AR is a poor fit because iOS Safari doesn't support WebXR or VPS.
-- **Backend:** Supabase (Postgres with PostGIS for "experiences near me" queries), or Firebase with GeoFire.
-- **Storage and CDN:** for 3D models (glTF/GLB), audio, images and video.
-- **Creator web dashboard (optional):** for editing text, translations, analytics and publishing. Placement itself always happens on site in the app.
+### Player
 
-## 4. Main features
+1. Open the link or scan the QR code, or tap **Explore** to see nearby experiences.
+2. Choose an experience and see its spots with distance and directions (open in Maps).
+3. Inside the radius, the spot unlocks: "Find this object" with a thumbnail of the target.
+4. Point the camera at the target and the content appears. Tap items to interact.
+5. Each visited spot is ticked off, stored locally in the browser for the POC.
 
-### Creator mode (in the app, on site)
-
-1. Create an experience with a title, cover image, description and category.
-2. Stand at the spot. The app localizes (VPS) and saves the anchor together with its GPS position.
-3. Place content on the anchor: 3D models, text, audio, video, images, portals, and so on.
-4. Adjust each item's position, rotation and scale with gestures.
-5. Optionally chain several spots into a trail with an order, riddles or quiz questions.
-6. Set rules: unlock radius, opening times, public, private or invite code.
-7. Preview, then publish.
-
-### Player mode
-
-1. A map or list of nearby experiences, with distance and directions.
-2. Content stays locked until the player is inside the geofence.
-3. On arrival, a guided "scan the area" step localizes the phone, then the content appears.
-4. Interactions: tap, collect, answer, trigger audio. Progress and badges are saved.
-5. Optionally a check-in or proof of visit, such as a stamp or certificate.
-
-### Making sure players are really there (anti-cheat)
-
-- Successful VPS localization is strong proof in itself, because GPS spoofing can't fake the camera view.
-- Detect mock locations and use Play Integrity on Android and App Attest on iOS.
-- Validate on the server: check speed and distance between check-ins, and timestamps.
-
-## 5. Data model (simplified)
+## 7. Data model (POC)
 
 ```
-User(id, role: creator|player, profile)
-Experience(id, creator_id, title, description, status, visibility, created_at)
-Spot(id, experience_id, order, lat, lng, altitude, unlock_radius_m,
-     anchor_type: geospatial|cloud_anchor|vps, anchor_ref, heading)
-ContentItem(id, spot_id, type: model|text|audio|video|image|quiz,
-            asset_url, local_pose{position, rotation, scale}, props_json)
-PlayerProgress(user_id, experience_id, spot_id, unlocked_at, completed_at)
+Experience(id, title, description, cover_url, creator_device_id, edit_key_hash,
+           status: draft|published, created_at)
+Spot(id, experience_id, order, lat, lng, unlock_radius_m, geofence_enabled,
+     target_image_url, target_mind_url, target_width_m)
+ContentItem(id, spot_id, type: model|text|image|audio, asset_url, text,
+            position{x,y,z}, rotation{x,y,z}, scale, props_json)
 ```
 
-## 6. Development phases
+Positions are relative to the image target: the target's centre is the origin and its width is 1 unit.
 
-| Phase | Scope | Rough length |
-|---|---|---|
-| **0. POC (see 1.1)** | No auth. Single-spot creator and player flow, outdoor Geospatial anchoring. Also serves as the tech spike. | 3–4 weeks |
-| **1. MVP** | Add authentication and roles (creator/player accounts), creator places one spot with basic content (3D model, text, image), publish, player map, geofence unlock, VPS display | 6–8 weeks |
-| **2. Experiences** | Multi-spot trails, audio and video, quizzes, progress and badges, invite codes | 4–6 weeks |
-| **3. Creator tools** | Web dashboard, asset library, translations, analytics (visits, completions) | 4–6 weeks |
-| **4. Scale and polish** | Anti-cheat, offline caching, moderation and reporting, push notifications ("you're near an experience"), store launch | 4 weeks |
+## 8. POC milestones (about 4–5 weeks)
 
-## 7. Risks to plan for
+| Week | Deliverable |
+|---|---|
+| 1 | Project setup, Supabase schema and storage, deploy pipeline. MindAR shows a hard-coded model on a test image on iPhone and Android. |
+| 2 | Creator flow: create an experience, add a spot with GPS, take the target photo and compile it in the browser, upload. |
+| 3 | AR placement editor: add model, text, image and audio; move, rotate and scale; save and publish; QR code. |
+| 4 | Player flow: explore list sorted by distance, geofence unlock, AR viewing, interactions, local progress. |
+| 5 | Test at real sites (at least one indoor, one outdoor), fix bugs, polish, demo. |
 
-- **Localization fails** in poor light, in crowds, or after a place changes (renovation, seasons). Mitigation: let creators re-anchor, and show GPS-only content as a fallback.
-- **Indoor coverage:** Geospatial API doesn't work indoors, so Cloud Anchors or a mapping-based VPS is required there.
-- **Moderation:** user-made content in public places needs reporting tools and review. Creators should also not be allowed to anchor on private property or sensitive sites.
-- **Battery and data:** AR plus GPS plus camera drains phones quickly. Keep sessions short and assets small.
-- **VPS costs and quotas** grow as usage grows.
+## 9. Success criteria
 
-## 8. Open decisions
+1. A creator can build and publish a one-spot experience on site in **under 10 minutes**, from a phone, without help.
+2. A player on a **different phone and OS** sees the content in the right place on the target.
+3. Content appears within **3 seconds** of pointing the camera at the target in normal light.
+4. It works on recent **iPhone (Safari)** and **Android (Chrome)** devices.
+5. It's tested successfully at **at least 3 real places**, including indoors and outdoors.
 
-1. **Setting:** mainly outdoor (cities, trails), indoor (museums), or both? This decides the anchoring approach.
-2. **Audience:** is this a consumer game, or a B2B tool for museums and tourism?
-3. **Creators:** can anyone create, or only verified or paying creators?
-4. **Target devices:** both iOS and Android from day one?
+## 10. After the POC (B2B roadmap)
+
+| Phase | Scope |
+|---|---|
+| **1. MVP** | Authentication; **organisations** (each museum or client is a workspace with members and roles); creator web dashboard; multi-spot trails with ordering; moderation tools |
+| **2. B2B features** | Branding (logo, colours, custom domain or white-label link); multiple languages per experience; analytics (visits, completions, time on site); quizzes, stamps and certificates |
+| **3. Better anchoring** | Web VPS (e.g. Immersal) for free placement without image targets; GPS + compass outdoor mode for large-scale content |
+| **4. Native apps (optional)** | If clients need more precise outdoor anchoring (Geospatial API), offline use or app-store presence: Unity + AR Foundation apps reading the same backend |
+
+## 11. Risks
+
+- **Image targets fail** with reflections, glass, low light or very plain objects. Mitigation: the editor shows a target quality score, and creators are encouraged to use a printed marker as a fallback.
+- **Browser differences:** iOS and Android camera, compass and permission prompts behave differently. Test on real devices every week.
+- **Phone performance:** large GLB models slow older phones. Limit upload size (for example 10 MB) and compress models (Draco/Meshopt).
+- **Open, anonymous backend:** anyone can create content, including spam or inappropriate material. Acceptable for a closed POC. Share links only with testers, and add moderation and authentication in Phase 1.
+- **Indoor GPS** is unreliable. That's why the geofence radius is adjustable and can be turned off for indoor spots.
